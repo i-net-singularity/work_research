@@ -222,3 +222,72 @@ steps:
    lockfile＋キャッシュで高速かつ再現性あるビルドが可能。
 
 この方式なら、**Node と Angular を自由に組み合わせながらも設定ファイルで明示的に管理**でき、開発者・CI・本番環境すべてで同じ結果を再現できます。
+
+
+# 通信について
+## 通信プロトコルとプロキシ対応
+
+| フェーズ                                                                | 実際に使われるプロトコル               | 補足                                                                                                                     |                                   |
+| ------------------------------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| **mise 本体のインストール**<br>( \`curl [https://mise.run](https://mise.run) | sh\` など)                   | **HTTPS**                                                                                                              | `https://mise.jdx.dev` からバイナリを取得。 |
+| **プラグイン追加**<br>`mise plugin add java …`                             | **git clone → HTTPS** (既定) | URL を `https://github.com/…` でクローンする。SSH URL を指定すれば `ssh://` も可。                                                       |                                   |
+| **ランタイム取得**<br>`mise install nodejs 20` など                          | **ほぼすべて HTTPS**            | 例: Node は `https://nodejs.org/...tar.xz`、Corretto は `https://corretto.aws/...tar.gz`。各プラグインのスクリプト内で `curl`/`wget` を使う。 |                                   |
+
+> **重要**
+>
+> * 現行の公式プラグインで **HTTP のみ** を強制するものは確認されていません（2025-06 時点）。
+> * 一部プラグインが **GitHub API** を呼ぶ場面もすべて HTTPS です。
+
+---
+
+## 認証付きプロキシで動かす手順
+
+1. **環境変数を設定**（ユーザごと、または `/etc/profile.d/proxy.sh` などで）
+
+   ```bash
+   export HTTP_PROXY="http://user:pass@proxy.example.com:8080"
+   export HTTPS_PROXY="http://user:pass@proxy.example.com:8080"
+   export NO_PROXY="localhost,127.0.0.1,::1"
+   ```
+
+2. **Git 経由の操作にも反映**
+
+   ```bash
+   git config --global http.proxy  $HTTPS_PROXY
+   git config --global https.proxy $HTTPS_PROXY
+   ```
+
+3. **mise / curl / wget は自動で上記を参照**
+
+   * mise 内部で使っている Rust の HTTP クライアント（reqwest）は `HTTPS_PROXY` を認識。
+   * プラグインスクリプトが呼ぶ `curl`・`wget` も同様に環境変数を読む。
+
+4. **sudo 実行時の注意**
+
+   ```bash
+   sudo -E mise install java@temurin-21  # -E で環境変数を引き継ぐ
+   ```
+
+---
+
+## 動作確認コマンド
+
+| 確認                     | コマンド                                                              |
+| ---------------------- | ----------------------------------------------------------------- |
+| プロキシ越しに GitHub に到達できるか | `curl -I https://github.com`                                      |
+| mise が実際にどこへアクセスするか    | `MISE_TRACE=1 mise install nodejs 20`<br>（URL や HTTP ステータスが表示される） |
+
+---
+
+### まとめ
+
+* **mise 本体・プラグイン・ランタイムの取得は基本的に HTTPS**。
+* 認証プロキシ環境では **`HTTP_PROXY` / `HTTPS_PROXY` 環境変数** を設定し、Git も同じ URL を登録すれば動作します。
+* まれに独自プラグインが `http://` を使っている場合は、プラグインスクリプトを編集して `https://` に置き換えるか、プロキシ側で HTTP を許可してください。
+
+
+
+# package-lock.json について
+
+引用元
+https://qiita.com/sugurutakahashi12345/items/1f6bb7a372b8263500e5
