@@ -7,13 +7,18 @@ CREATE OR REPLACE FUNCTION fdw_health_check(
     p_persist BOOLEAN DEFAULT TRUE
 )
 RETURNS TABLE (
+    check_id    CHAR(4),
+    check_name  VARCHAR(255),
     is_healthy  BOOLEAN,
     latency_ms  DOUBLE PRECISION,
     error_code  TEXT,
-    error_msg   TEXT
+    error_msg   TEXT,
+    checked_at  TIMESTAMP
 )
 LANGUAGE plpgsql
 AS $$
+-- SQL文内の名前衝突時、テーブルカラムを優先（RETURNS TABLE の暗黙変数との衝突回避）
+#variable_conflict use_column
 DECLARE
     v_start     TIMESTAMPTZ;
     v_end       TIMESTAMPTZ;
@@ -21,6 +26,7 @@ DECLARE
     v_latency   DOUBLE PRECISION;
     v_sqlstate  TEXT;
     v_message   TEXT;
+    v_now       TIMESTAMP := now();
 BEGIN
     -- タイムアウト設定（トランザクション終了時に自動リセット）
     EXECUTE format('SET LOCAL statement_timeout = %L', (p_timeout_sec * 1000)::TEXT);
@@ -54,7 +60,7 @@ BEGIN
     IF p_persist THEN
         -- 結果をt_health_checkにUPSERT（空白時間なし）
         INSERT INTO t_health_check (check_id, check_name, is_healthy, latency_ms, error_code, error_msg, checked_at)
-        VALUES (p_check_id, p_check_name, v_healthy, v_latency, v_sqlstate, v_message, now())
+        VALUES (p_check_id, p_check_name, v_healthy, v_latency, v_sqlstate, v_message, v_now)
         ON CONFLICT (check_id) DO UPDATE SET
             check_name = EXCLUDED.check_name,
             is_healthy = EXCLUDED.is_healthy,
@@ -65,6 +71,6 @@ BEGIN
     END IF;
 
     -- 結果をテーブルとして返却
-    RETURN QUERY SELECT v_healthy, v_latency, v_sqlstate, v_message;
+    RETURN QUERY SELECT p_check_id, p_check_name, v_healthy, v_latency, v_sqlstate, v_message, v_now;
 END;
 $$;
