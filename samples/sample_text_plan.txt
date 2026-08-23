@@ -1,0 +1,19 @@
+                                                              QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------
+ Sort  (cost=54321.10..54421.10 rows=40000 width=72) (actual time=1250.421..1305.334 rows=185000 loops=1)
+   Sort Key: o.created_at DESC
+   Sort Method: external merge  Disk: 18432kB
+   Buffers: shared hit=12045 read=8830, temp read=2304 written=2310
+   ->  Nested Loop  (cost=0.00..48000.55 rows=40000 width=72) (actual time=0.085..980.221 rows=185000 loops=1)
+         Buffers: shared hit=12045 read=8830
+         ->  Seq Scan on orders o  (cost=0.00..18000.00 rows=4000 width=40) (actual time=0.031..250.115 rows=185000 loops=1)
+               Filter: ((status)::text = 'active'::text)
+               Rows Removed by Filter: 815000
+               Buffers: shared hit=8000 read=4500
+         ->  Seq Scan on customers c  (cost=0.00..7.50 rows=1 width=32) (actual time=0.002..0.003 rows=1 loops=185000)
+               Filter: (c.id = o.customer_id)
+               Rows Removed by Filter: 249
+               Buffers: shared hit=4045 read=4330
+ Planning Time: 0.512 ms
+ Execution Time: 1350.882 ms
+(16 rows)
